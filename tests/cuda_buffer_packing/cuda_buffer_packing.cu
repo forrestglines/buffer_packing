@@ -32,19 +32,41 @@ float kernel_timer_wrapper(const int n_burn, const int n_perf, PerfFunc perf_fun
   return milliseconds/1000.;
 }
 
-__global__ void k_minbranch_scratch(Real* array4d_in, Real* buf){
+//////////////////////////////////////////////////////////////////////////////
+//Parallelization strategy:
+// Each block works on one variable for one face - when working with cube meshblocks, each
+// block has the same number of points. The x direction, however, will not be
+// coallesced
+// 
+// A block on face A  will have nghost*nxB*nxC points to load to a face
+// Then two edges of size nghost*nghost*nxB and nghost*nghost*nxC respectively
+// Then four edges of size  nghost**3 (but only for y and z faces)
+//
+// Will need nvar*nface blocks
+
+//Should switch to one slice per block? So have nvar*nface*nghost blocks?
+//////////////////////////////////////////////////////////////////////////////
+__global__ void k_minbranch_scratch(Real* array4d_in, 
+    Real* face_buf, Real* edge_buf, Real* vert_buf,
+    const int nvar,
+    const int nx1, const int nx2, const int nx3, const int nghost,
+    const int int_nx1, const int int_nx2, const int int_nx3,
+    const int var_face_buf_n, const int var_edge_buf_n
+    ){
+
+  //Setup face buffer in  Shared memory 
+  extern __shared__ Real s_face_buf[];
+
+  //Get index of face and variable to work on
   const int face = blockIdx.x;
   const int var = blockIdx.y;
 
+  //Get direction (xyz) of face being worked on
   const int dir = face/3;
   //const int sign  = 2*(face%2)-1;
 
   const int thread_idx = threadIdx.x;
   const int thread_n = blockDim.x;
-
-  const int int_nx1 = nx1 - nghost*2;
-  const int int_nx2 = nx1 - nghost*2;
-  const int int_nx3 = nx1 - nghost*2;
 
   //Compute offset from beginning of face buffer for this block/face
   const int face_buf_offset = var*var_face_buf_n + nghost*( 
@@ -72,26 +94,18 @@ __global__ void k_minbranch_scratch(Real* array4d_in, Real* buf){
     //Compute indices within the meshblock
     const int mb_k =  face_idx/( face_nx1*face_nx2 ) + face_ks;
     const int mb_j = (face_idx%( face_nx1*face_nx2 ))/face_nx1 + face_js;
-    const int mb_i =  face_idx%face_nx1;
+    const int mb_i =  face_idx%face_nx1 + face_is;
+
+    const int array_idx = mb_i + nx1*( mb_j + nx2*( mb_k + nx3*var));
 
     //Load the point into shared memory
-    s_face_buf[face_idx] = array4d_in(var,mb_k,mb_j,mb_i);
+    s_face_buf[face_idx] = array4d_in[array_idx];
     //Save it into the face buffer
     face_buf[face_idx+face_buf_offset] = s_face_buf[face_idx];
   }
   __syncthreads();
 
 
-  //Compute total number of edge points handled by this block
-  const int edge1_n = nghost*nghost*(
-       (dir==0)*int_nx3  // (x,y) edge
-      +(dir==1)*int_nx1  // (y,z) edge
-      +(dir==2)*int_nx1);// (z,x) edge
-  const int edge2_n = nghost*nghost*(
-       (dir==0)*int_nx2   // (x,z) edge
-      +(dir==1)*int_nx3   // (y,z) edge
-      +(dir==2)*int_nx2 );// (z,y) edge
-  const int edge_n = edge1_n + edge2_n;
 
   //Compute starting indices and dimensions within face buffer of first edge
   const int edge1_is = (int_nx1-nghost)*(face==4);
@@ -108,6 +122,19 @@ __global__ void k_minbranch_scratch(Real* array4d_in, Real* buf){
   const int edge2_nx2 = int_nx2*(dir==0) + nghost*(dir!=0);
   const int edge2_ks = (int_nx3-nghost)*(face==1);
   const int edge2_nx3 = int_nx3*(dir==1) + nghost*(dir!=1);
+
+  //Compute total number of edge points handled by this block
+  //const int edge1_n = nghost*nghost*(
+  //     (dir==0)*int_nx3  // (x,y) edge
+  //    +(dir==1)*int_nx1  // (y,z) edge
+  //    +(dir==2)*int_nx1);// (z,x) edge
+  const int edge1_n = edge1_nx1*edge1_nx2*edge1_nx3;
+  //const int edge2_n = nghost*nghost*(
+  //     (dir==0)*int_nx2   // (x,z) edge
+  //    +(dir==1)*int_nx3   // (y,z) edge
+  //    +(dir==2)*int_nx2 );// (z,y) edge
+  const int edge2_n = edge2_nx1*edge2_nx2*edge2_nx3;
+  const int edge_n = edge1_n + edge2_n;
 
   //Compute an offset within the edge buffer
   const int edge_buf_offset = var*var_edge_buf_n + nghost*nghost*(
@@ -142,9 +169,11 @@ __global__ void k_minbranch_scratch(Real* array4d_in, Real* buf){
     const int vert_buf_offset = vert1_n*( 8*var + 2*(face-2) );
 
     for( int vert_idx = thread_idx; vert_idx < 2*vert1_n; vert_idx += thread_n){
-      const int face_k =  edge_idx/( nghost*nghost ) + vert_ks;
-      const int face_j = (edge_idx%( nghost*nghost))/nghost + vert_js;
-      const int face_i =  edge_idx%nghost + (int_nx1-nghost)*(thread_idx < vert1_n);
+      const int vert_is = (int_nx1-nghost)*(thread_idx < vert1_n);
+
+      const int face_k =  vert_idx/( nghost*nghost ) + vert_ks;
+      const int face_j = (vert_idx%( nghost*nghost))/nghost + vert_js;
+      const int face_i =  vert_idx%nghost + vert_is;
 
       vert_buf[vert_idx+vert_buf_offset] = s_face_buf[ face_i + face_nx1*(face_j + face_nx2*face_k) ];
     }
@@ -183,95 +212,59 @@ int main(int argc, char* argv[]) {
   const int total_edge_buf_n = nvar*var_edge_buf_n;
 
   //Vertex buffers: 8 cubes of nghost*nghost*nghost size
-  const int total_vert_buf_n = nvar*8*(nghost*nghost*nghost)
+  const int var_vert_buf_n = 8*(nghost*nghost*nghost);
+  const int total_vert_buf_n = nvar*var_vert_buf_n;
 
   //Total buffer size
   const int total_buf = total_face_buf_n + total_edge_buf_n + total_vert_buf_n;
 
   //Setup a 4d data array and 1d buffer with faces, edges, verts
   Real* d_array4d_in;
-  cudaMalloc(&d_array4d_in, sizeof(Real)*ngrid);
+  cudaMalloc(&d_array4d_in, sizeof(Real)*nmb);
   Real* d_buf;
   cudaMalloc(&d_buf, sizeof(Real)*(total_buf) );
 
   //Make some more convenient device pointers
-  const Real* d_face_buf = d_buf;
-  const Real* d_edge_bur = d_face_buf + total_face_buf_n;
-  const Real* d_vert_bur = d_edge_buf + total_edge_buf_n;
+  Real* d_face_buf = d_buf;
+  Real* d_edge_buf = d_face_buf + total_face_buf_n;
+  Real* d_vert_buf = d_edge_buf + total_edge_buf_n;
 
 
-  //////////////////////////////////////////////////////////////////////////////
-  //Parallelization strategy:
-  // Each block works on one variable for one face - when working with cube meshblocks, each
-  // block has the same number of points. The x direction, however, will not be
-  // coallesced
-  // 
-  // A block on face A  will have nghost*nxB*nxC points to load to a face
-  // Then two edges of size nghost*nghost*nxB and nghost*nghost*nxC respectively
-  // Then four edges of size  nghost**3 (but only for y and z faces)
-  //
-  // Will need nvar*nface blocks
-
-  //Should switch to one slice per block? So have nvar*nface*nghost blocks?
-  //////////////////////////////////////////////////////////////////////////////
+  //Define parallelization
   const int threads_per_block = 64;
-  const dim3 cuda_grid(n_grid/threads_per_block,n_var,1);
+  //One block in grid.x for each face (+-xyz)
+  //One block in grid.y for each variable
+  const dim3 cuda_grid(6,nvar,1);
   const dim3 cuda_block(threads_per_block,1,1);
 
-  float time_array2d = kernel_timer_wrapper( n_run, n_run,
+
+  //Allocate shared memory to accomodate the largest face buffer
+  const  size_t shared_memory_size = sizeof(Real) * nghost * 
+    max(  max(int_nx1*int_nx2, int_nx2*int_nx3), int_nx3*int_nx1);
+
+  float time_minbranch_scratch = kernel_timer_wrapper( nrun, nrun,
     [&] () {
-      k_array2d<<< cuda_grid, cuda_block >>> 
-        (d_array2d_in, d_array2d_out);
-  });
 
-  //Setup an array of arrays
-  //Array of arrays on device
-  CUdeviceptr* d_array_of_array1d_in;
-  cudaMalloc(&d_array_of_array1d_in, sizeof(CUdeviceptr)*n_var);
-  CUdeviceptr* d_array_of_array1d_out;
-  cudaMalloc(&d_array_of_array1d_out, sizeof(CUdeviceptr)*n_var);
+      k_minbranch_scratch<<< cuda_grid, cuda_block, shared_memory_size >>> 
+        (d_array4d_in, 
+         d_face_buf, d_edge_buf, d_face_buf,
+         nvar,
+         nx1, nx2, nx3, nghost,
+         int_nx1, int_nx2, int_nx3,
+         var_face_buf_n, var_edge_buf_n
+         );
 
-  //Array of arrays on host
-  CUdeviceptr* h_array_of_array1d_in  = (CUdeviceptr*) malloc(sizeof(CUdeviceptr)*n_var);
-  CUdeviceptr* h_array_of_array1d_out = (CUdeviceptr*) malloc(sizeof(CUdeviceptr)*n_var);
-
-  //Malloc each 1d array
-  for(int i = 0; i < n_var; i++) {
-        cudaMalloc((void**)(h_array_of_array1d_in+i ), n_grid * sizeof(Real));
-        cudaMalloc((void**)(h_array_of_array1d_out+i), n_grid * sizeof(Real));
-  }
-
-  //Move h_array_of_array1d to d_array_of_array1d
-  cudaMemcpy(d_array_of_array1d_in, h_array_of_array1d_in, sizeof(CUdeviceptr) * n_var, cudaMemcpyHostToDevice);
-  cudaMemcpy(d_array_of_array1d_out, h_array_of_array1d_out, sizeof(CUdeviceptr) * n_var, cudaMemcpyHostToDevice);
-
-
-  double time_array_of_array1d = kernel_timer_wrapper( n_run, n_run,
-    [&] () {
-      k_array_of_array1d<<< cuda_grid, cuda_block >>> 
-        ( (Real**) d_array_of_array1d_in, (Real**) d_array_of_array1d_out);
   });
 
 
-  double cell_cycles_per_second_array2d = static_cast<double>(n_grid)*static_cast<double>(n_run)/time_array2d; 
-  double cell_cycles_per_second_array_of_array1d = static_cast<double>(n_grid)*static_cast<double>(n_run)/time_array_of_array1d; 
-  std::cout<< n_var << " " << n_grid << " " << n_run << " " << time_array2d << " " << time_array_of_array1d << " " 
-           << cell_cycles_per_second_array2d << " " << cell_cycles_per_second_array_of_array1d << std::endl;
+  double cell_cycles_per_second_minbranch_scratch = static_cast<double>(nmb)*static_cast<double>(nrun)/time_minbranch_scratch; 
+  std::cout<< nvar << " " << nmb << " " << nrun << " " 
+           << time_minbranch_scratch << " " << cell_cycles_per_second_minbranch_scratch << " " << 
+           std::endl;
 
 
-  //free each 1d array
-  for(int i = 0; i < n_var; i++) {
-        cudaFree(h_array_of_array1d_in+i);
-        cudaFree(h_array_of_array1d_out+i);
-  }
 
-  free(h_array_of_array1d_in);
-  free(h_array_of_array1d_out);
-  cudaFree(d_array_of_array1d_in);
-  cudaFree(d_array_of_array1d_out);
-
-  cudaFree(d_array2d_in);
-  cudaFree(d_array2d_out);
-
+  cudaFree(d_array4d_in);
+  cudaFree(d_buf);
 
 }
