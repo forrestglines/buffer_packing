@@ -150,7 +150,7 @@ __global__ void k_minbranch_scratch(Real* array4d_in,
                       + ( edge_flag)*((edge_idx%( edge2_nx1*edge2_nx2)/edge2_nx1 ) + edge2_js);
     const int face_i =  (!edge_flag)*(edge_idx%edge1_nx1 + edge1_is)
                       + ( edge_flag)*(edge_idx%edge2_nx1 + edge2_is);
-
+    
     edge_buf[edge_idx+edge_buf_offset] = s_face_buf[ face_i + face_nx1*(face_j + face_nx2*face_k) ];
   }
 
@@ -241,6 +241,7 @@ int main(int argc, char* argv[]) {
   //Allocate shared memory to accomodate the largest face buffer
   const  size_t shared_memory_size = sizeof(Real) * nghost * 
     max(  max(int_nx1*int_nx2, int_nx2*int_nx3), int_nx3*int_nx1);
+
 
   float time_minbranch_scratch = kernel_timer_wrapper( nrun, nrun,
     [&] () {
