@@ -736,7 +736,7 @@ int main(int argc, char* argv[]) {
 
     double cell_cycles_per_second_simple = static_cast<double>(nmb)*static_cast<double>(nrun)/time_simple; 
     double time_per_kernel_simple = time_simple/static_cast<double>(nrun); 
-    std::cout<< nvar << " " << nmb << " " << nrun << " " 
+    std::cout<< nvar << " " << nx1 << " " << nx2 << " " << nx3 << " " << " " << nmb << " " << nrun << " " 
              << time_simple << " " << time_per_kernel_simple << " " << cell_cycles_per_second_simple << " " << 
              std::endl;
   }
