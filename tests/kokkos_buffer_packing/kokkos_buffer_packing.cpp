@@ -142,7 +142,7 @@ void compute_buf_offsets( HIntView1D buf_offsets,
   // the verts
   for( int i = 0; i < 8; i++){
     buf_offsets(offset_idx++) = buf_offset;
-    buf_offset += nghost*nghost*nghost;
+    buf_offset += nghost*nghost*nghost*nvar;
   }
 
   assert( buf_offset == (var_face_buf_n + var_edge_buf_n + var_vert_buf_n)*nvar);
@@ -317,8 +317,8 @@ bool compare_buffers( const HView1D& buf_gold, const HView1D& buf_comp, const HV
               assert( in(l,k,j,i) == buf_gold( all_buf_idx) );
 
               std::cout<< "Fault in buf: " << buf_idx
-                       << " at buf (" << buf_i << "," << buf_j << "," << buf_k <<" ). "
-                       << " at mb  (" << i << "," << j << "," << k <<" ). "
+                       << " at buf (" << l << "," << buf_i << "," << buf_j << "," << buf_k <<" ). "
+                       << " at mb  (" << l << "," << i << "," << j << "," << k <<" ). "
                        << " buf_gold("<< all_buf_idx << ")= "
                        << buf_gold( all_buf_idx )
                        << " buf_comp("<< all_buf_idx << ")= "
@@ -422,9 +422,9 @@ KOKKOS_INLINE_FUNCTION void save_to_face_buf( const View4D& in, const View1D& bu
   const int face_buf_idx  =  face_i + face_nx1*( face_j + face_nx2*face_k);
 
   //Offset in buf
-  const int buf_offset = nvar*2*nghost*( (face_dim > 0)*int_nx2*int_nx3 + (face_dim > 1)*int_nx1*int_nx3) //Offest from previous faces
-                       + face_nx1*face_nx2*face_nx3*l //Offset from previous variables
-                       + face_side*face_nx1*face_nx2*face_nx3; //Add M face offset, if applicable
+  const int buf_offset = nvar*(  2*nghost*( (face_dim > 0)*int_nx2*int_nx3 + (face_dim > 1)*int_nx1*int_nx3) //Offest from previous faces
+                               + face_side*face_nx1*face_nx2*face_nx3) //Add M face offset, if applicable
+                       + face_nx1*face_nx2*face_nx3*l; //Offset from previous variables
 
   const int buf_idx = buf_offset + face_buf_idx;
   //Save data to buf
@@ -462,9 +462,9 @@ KOKKOS_INLINE_FUNCTION void save_to_edge_buf( const View4D& in, const View1D& bu
 
   //Offset in buf
   const int buf_offset = + total_face_buf_n //Add offset from faces
-                         + nvar*4*nghost*nghost*( (edge_dim > 0)*int_nx1 + (edge_dim > 1)*int_nx2) //Offest from previous edges in other dims
-                         + edge_nx1*edge_nx2*edge_nx3*l //Offset from previous variables
-                         + (2*edge1_side + edge2_side)*edge_nx1*edge_nx2*edge_nx3; //Add offset from previous edge in this dim
+                         + nvar*(4*nghost*nghost*( (edge_dim > 0)*int_nx1 + (edge_dim > 1)*int_nx2) //Offest from previous edges in other dims
+                              + (2*edge1_side + edge2_side)*edge_nx1*edge_nx2*edge_nx3) //Add offset from previous edge in this dim
+                         + edge_nx1*edge_nx2*edge_nx3*l; //Offset from previous variables
 
   const int buf_idx = buf_offset + edge_buf_idx;
   //Save data to buf
@@ -502,8 +502,8 @@ KOKKOS_INLINE_FUNCTION void save_to_vert_buf( const View4D& in, const View1D& bu
   //Offset in buf
   const int buf_offset = total_face_buf_n //Add offset from faces
                        + total_edge_buf_n //Add offset from edges
-                       + vert_nx1*vert_nx2*vert_nx3*l
-                       + nghost*nghost*nghost*( 4*side1 + 2*side2 + side3 ); //Offest from previous verts
+                       + nvar*nghost*nghost*nghost*( 4*side1 + 2*side2 + side3 )
+                       + vert_nx1*vert_nx2*vert_nx3*l; //Offset from previous variables
 
   const int buf_idx = buf_offset + vert_buf_idx;
   //Save data to buf
