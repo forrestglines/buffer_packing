@@ -572,9 +572,17 @@ int main(int argc, char* argv[]) {
     //Number of points that are in one the z faces
     const int z_slab_points = nghost * int_nx1 * int_nx2;
 
+    //auto simple_kernel = [&] () {
+    //  Kokkos::parallel_for( "Simple Loop", Kokkos::MDRangePolicy<Kokkos::Rank<2>>({0,0},{nvar, 2*(x_slab_points+y_slab_points+z_slab_points)}),
+    //    KOKKOS_LAMBDA (const int& l, const int& idx){
+
+    const unsigned int var_all_slabs_n = 2*(x_slab_points+y_slab_points+z_slab_points);
     auto simple_kernel = [&] () {
-      Kokkos::parallel_for( "Simple Loop", Kokkos::MDRangePolicy<Kokkos::Rank<2>>({0,0},{nvar, 2*(x_slab_points+y_slab_points+z_slab_points)}),
-        KOKKOS_LAMBDA (const int& l, const int& idx){
+      Kokkos::parallel_for( "Simple Loop", Kokkos::RangePolicy<>({0,nvar*var_all_slabs_n}),
+        KOKKOS_LAMBDA (const int global_idx){
+          const int l = global_idx/var_all_slabs_n;
+          const int idx = global_idx%var_all_slabs_n;
+
           //Indices into the mesh block
           int i,j,k;
 
