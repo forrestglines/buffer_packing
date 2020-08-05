@@ -149,7 +149,7 @@ void compute_buf_offsets( HIntView1D buf_offsets,
   assert( buf_offset == (var_buf_n)*nvar);
 }
 
-void compute_buf_boxes( const HIntView2D& buf_boxes,
+void compute_packing_buf_boxes( const HIntView2D& packing_buf_boxes,
     const int& nx1, const int& nx2, const int& nx3, const int& nghost,
     const int& int_nx1, const int& int_nx2, const int& int_nx3,
     const int& var_buf_n
@@ -172,12 +172,12 @@ void compute_buf_boxes( const HIntView2D& buf_boxes,
       const int face_nx3 = (face_dim == 2) ? nghost : int_nx3;
       
       //Store this buffer box
-      buf_boxes( buf_idx ,0 ) = face_is;
-      buf_boxes( buf_idx ,1 ) = face_nx1;
-      buf_boxes( buf_idx ,2 ) = face_js;
-      buf_boxes( buf_idx ,3 ) = face_nx2;
-      buf_boxes( buf_idx ,4 ) = face_ks;
-      buf_boxes( buf_idx ,5 ) = face_nx3;
+      packing_buf_boxes( buf_idx ,0 ) = face_is;
+      packing_buf_boxes( buf_idx ,1 ) = face_nx1;
+      packing_buf_boxes( buf_idx ,2 ) = face_js;
+      packing_buf_boxes( buf_idx ,3 ) = face_nx2;
+      packing_buf_boxes( buf_idx ,4 ) = face_ks;
+      packing_buf_boxes( buf_idx ,5 ) = face_nx3;
       buf_idx++;
 
       total_var_buf_n += face_nx1*face_nx2*face_nx3;
@@ -202,12 +202,12 @@ void compute_buf_boxes( const HIntView2D& buf_boxes,
 
         
         //Store this buffer box
-        buf_boxes( buf_idx ,0 ) = edge_is;
-        buf_boxes( buf_idx ,1 ) = edge_nx1;
-        buf_boxes( buf_idx ,2 ) = edge_js;
-        buf_boxes( buf_idx ,3 ) = edge_nx2;
-        buf_boxes( buf_idx ,4 ) = edge_ks;
-        buf_boxes( buf_idx ,5 ) = edge_nx3;
+        packing_buf_boxes( buf_idx ,0 ) = edge_is;
+        packing_buf_boxes( buf_idx ,1 ) = edge_nx1;
+        packing_buf_boxes( buf_idx ,2 ) = edge_js;
+        packing_buf_boxes( buf_idx ,3 ) = edge_nx2;
+        packing_buf_boxes( buf_idx ,4 ) = edge_ks;
+        packing_buf_boxes( buf_idx ,5 ) = edge_nx3;
         buf_idx++;
 
         total_var_buf_n += edge_nx1*edge_nx2*edge_nx3;
@@ -230,12 +230,12 @@ void compute_buf_boxes( const HIntView2D& buf_boxes,
 
         
         //Store this buffer box
-        buf_boxes( buf_idx ,0 ) = vert_is;
-        buf_boxes( buf_idx ,1 ) = vert_nx1;
-        buf_boxes( buf_idx ,2 ) = vert_js;
-        buf_boxes( buf_idx ,3 ) = vert_nx2;
-        buf_boxes( buf_idx ,4 ) = vert_ks;
-        buf_boxes( buf_idx ,5 ) = vert_nx3;
+        packing_buf_boxes( buf_idx ,0 ) = vert_is;
+        packing_buf_boxes( buf_idx ,1 ) = vert_nx1;
+        packing_buf_boxes( buf_idx ,2 ) = vert_js;
+        packing_buf_boxes( buf_idx ,3 ) = vert_nx2;
+        packing_buf_boxes( buf_idx ,4 ) = vert_ks;
+        packing_buf_boxes( buf_idx ,5 ) = vert_nx3;
         buf_idx++;
 
         total_var_buf_n += vert_nx1*vert_nx2*vert_nx3;
@@ -247,21 +247,23 @@ void compute_buf_boxes( const HIntView2D& buf_boxes,
   assert( total_var_buf_n == var_buf_n);
 }
 
+
+
 void cpp_buffer_packing( const HView4D& in, const HView1D& buf,
     const int& nvar, const int var_buf_n,
-    const HIntView1D& buf_offsets, const HIntView2D& buf_boxes
+    const HIntView1D& buf_offsets, const HIntView2D& packing_buf_boxes
     ){
 
 
   for( int l = 0; l < nvar ; l++){
     for( int buf_idx =0; buf_idx < N_BUFFERS; buf_idx++){
       //Get the start indices and length of this buffer
-      const int buf_is  = buf_boxes(buf_idx, 0);
-      const int buf_nx1 = buf_boxes(buf_idx, 1);
-      const int buf_js  = buf_boxes(buf_idx, 2);
-      const int buf_nx2 = buf_boxes(buf_idx, 3);
-      const int buf_ks  = buf_boxes(buf_idx, 4);
-      const int buf_nx3 = buf_boxes(buf_idx, 5);
+      const int buf_is  = packing_buf_boxes(buf_idx, 0);
+      const int buf_nx1 = packing_buf_boxes(buf_idx, 1);
+      const int buf_js  = packing_buf_boxes(buf_idx, 2);
+      const int buf_nx2 = packing_buf_boxes(buf_idx, 3);
+      const int buf_ks  = packing_buf_boxes(buf_idx, 4);
+      const int buf_nx3 = packing_buf_boxes(buf_idx, 5);
 
       for( int buf_k = 0; buf_k < buf_nx3; buf_k++){
         for( int buf_j = 0; buf_j < buf_nx2; buf_j++){
@@ -282,9 +284,171 @@ void cpp_buffer_packing( const HView4D& in, const HView1D& buf,
   }//End variables
 }
 
+void compute_unpacking_buf_boxes( const HIntView2D& unpacking_buf_boxes,
+    const int& nx1, const int& nx2, const int& nx3, const int& nghost,
+    const int& int_nx1, const int& int_nx2, const int& int_nx3,
+    const int& var_buf_n
+    ) {
+  int buf_idx = 0;
+
+  int total_var_buf_n = 0;
+
+  // Faces
+  for( int face_dim = 0; face_dim < 3; face_dim++){
+    for( int face_side = 0; face_side < 2; face_side++){
+      //Start indices of face
+      const int face_is = face_dim == 0 ?  (face_side ? nx1-nghost : 0) : nghost;
+      const int face_js = face_dim == 1 ?  (face_side ? nx2-nghost : 0) : nghost;
+      const int face_ks = face_dim == 2 ?  (face_side ? nx3-nghost : 0) : nghost;
+
+      //Dimensions of the face
+      const int face_nx1 = (face_dim == 0) ? nghost : int_nx1;
+      const int face_nx2 = (face_dim == 1) ? nghost : int_nx2;
+      const int face_nx3 = (face_dim == 2) ? nghost : int_nx3;
+      
+      //Store this buffer box
+      unpacking_buf_boxes( buf_idx ,0 ) = face_is;
+      unpacking_buf_boxes( buf_idx ,1 ) = face_nx1;
+      unpacking_buf_boxes( buf_idx ,2 ) = face_js;
+      unpacking_buf_boxes( buf_idx ,3 ) = face_nx2;
+      unpacking_buf_boxes( buf_idx ,4 ) = face_ks;
+      unpacking_buf_boxes( buf_idx ,5 ) = face_nx3;
+      buf_idx++;
+
+      total_var_buf_n += face_nx1*face_nx2*face_nx3;
+    }
+  }
+
+  // edges
+  for( int edge_dim = 0; edge_dim < 3; edge_dim++){
+    const int edge1_dim = (edge_dim+1)%3;
+    const int edge2_dim = (edge_dim+2)%3;
+    for( int edge1_side = 0; edge1_side < 2; edge1_side++){
+      for( int edge2_side = 0; edge2_side < 2; edge2_side++){
+        //Start indices of edge
+        const int edge_is = edge_dim == 0 ?  nghost : ( ( (edge1_dim == 0 && edge1_side) || (edge2_dim == 0 && edge2_side) )? nx1-nghost : 0); 
+        const int edge_js = edge_dim == 1 ?  nghost : ( ( (edge1_dim == 1 && edge1_side) || (edge2_dim == 1 && edge2_side) )? nx2-nghost : 0); 
+        const int edge_ks = edge_dim == 2 ?  nghost : ( ( (edge1_dim == 2 && edge1_side) || (edge2_dim == 2 && edge2_side) )? nx3-nghost : 0); 
+
+        //Dimensions of the edge
+        const int edge_nx1 = (edge_dim == 0) ? int_nx1 : nghost;
+        const int edge_nx2 = (edge_dim == 1) ? int_nx2 : nghost;
+        const int edge_nx3 = (edge_dim == 2) ? int_nx3 : nghost;
+
+        
+        //Store this buffer box
+        unpacking_buf_boxes( buf_idx ,0 ) = edge_is;
+        unpacking_buf_boxes( buf_idx ,1 ) = edge_nx1;
+        unpacking_buf_boxes( buf_idx ,2 ) = edge_js;
+        unpacking_buf_boxes( buf_idx ,3 ) = edge_nx2;
+        unpacking_buf_boxes( buf_idx ,4 ) = edge_ks;
+        unpacking_buf_boxes( buf_idx ,5 ) = edge_nx3;
+        buf_idx++;
+
+        total_var_buf_n += edge_nx1*edge_nx2*edge_nx3;
+      }
+    }
+  }
+
+  for( int side1 = 0; side1 < 2; side1++){
+    for( int side2 = 0; side2 < 2; side2++){
+      for( int side3 = 0; side3 < 2; side3++){
+        //Start indices of vert
+        const int vert_is = side1 ? nx1 - nghost: 0;
+        const int vert_js = side2 ? nx2 - nghost: 0;
+        const int vert_ks = side3 ? nx3 - nghost: 0;
+
+        //Dimensions of the vert
+        const int vert_nx1 = nghost;
+        const int vert_nx2 = nghost;
+        const int vert_nx3 = nghost;
+
+        
+        //Store this buffer box
+        unpacking_buf_boxes( buf_idx ,0 ) = vert_is;
+        unpacking_buf_boxes( buf_idx ,1 ) = vert_nx1;
+        unpacking_buf_boxes( buf_idx ,2 ) = vert_js;
+        unpacking_buf_boxes( buf_idx ,3 ) = vert_nx2;
+        unpacking_buf_boxes( buf_idx ,4 ) = vert_ks;
+        unpacking_buf_boxes( buf_idx ,5 ) = vert_nx3;
+        buf_idx++;
+
+        total_var_buf_n += vert_nx1*vert_nx2*vert_nx3;
+      }
+    }
+  }
+
+  assert( buf_idx == N_BUFFERS);
+  assert( total_var_buf_n == var_buf_n);
+}
+
+void cpp_buffer_unpacking( const HView4D& out, const HView1D& buf,
+    const int& nvar, const int var_buf_n,
+    const HIntView1D& buf_offsets, const HIntView2D& unpacking_buf_boxes
+    ){
+
+  for( int l = 0; l < nvar ; l++){
+    for( int buf_idx =0; buf_idx < N_BUFFERS; buf_idx++){
+      //Get the start indices and length of this buffer
+      const int buf_is  = unpacking_buf_boxes(buf_idx, 0);
+      const int buf_nx1 = unpacking_buf_boxes(buf_idx, 1);
+      const int buf_js  = unpacking_buf_boxes(buf_idx, 2);
+      const int buf_nx2 = unpacking_buf_boxes(buf_idx, 3);
+      const int buf_ks  = unpacking_buf_boxes(buf_idx, 4);
+      const int buf_nx3 = unpacking_buf_boxes(buf_idx, 5);
+
+      for( int buf_k = 0; buf_k < buf_nx3; buf_k++){
+        for( int buf_j = 0; buf_j < buf_nx2; buf_j++){
+          for( int buf_i = 0; buf_i < buf_nx1; buf_i++){
+            const int i = buf_i + buf_is;
+            const int j = buf_j + buf_js;
+            const int k = buf_k + buf_ks;
+
+            const int this_buf_idx = buf_i + buf_nx1*( buf_j + buf_nx2*buf_k);
+            const int all_buf_idx = buf_offsets(buf_idx) + buf_nx1*buf_nx2*buf_nx3*l + this_buf_idx;
+
+            //if( i == 0 && j == 0 && k == 0){
+            //  std::cout<< "Unpacking buf_idx: " << buf_idx
+            //           << " at buf (" << l << "," << buf_i << "," << buf_j << "," << buf_k <<" )= "
+            //           << " buf("<< all_buf_idx << ")= "
+            //           << buf( all_buf_idx )
+            //           << " at in(" << l << "," << k << "," << j << "," << i <<" ). "
+            //           << in( l,k,j,i )
+            //           << std::endl;
+            //}
+
+
+            out(l,k,j,i) = buf( all_buf_idx );
+          }
+        }
+      }
+    
+    }//End this buffer
+  }//End variables
+}
+
+
+void cpp_corrupt_ghostzones( const HView4D& in,     
+    const int& nvar, const int& nx1, const int& nx2, const int& nx3, const int& nghost
+    ){
+  for( int l = 0; l < nvar ; l++){
+    for( int k = 0; k < nx3 ; k++){
+      for( int j = 0; j < nx2 ; j++){
+        for( int i = 0; i < nx1 ; i++){
+          if(    i < nghost || i >= nx1 - nghost
+              || j < nghost || j >= nx2 - nghost
+              || k < nghost || k >= nx3 - nghost ) {
+            in(l,k,j,i) = -1;
+          }
+        }
+      }
+    }
+  }//End variables
+}
+
 bool compare_buffers( const HView1D& buf_gold, const HView1D& buf_comp, const HView4D& in,
     const int& nvar, const int var_buf_n,
-    const HIntView1D& buf_offsets, const HIntView2D& buf_boxes
+    const HIntView1D& buf_offsets, const HIntView2D& packing_buf_boxes
     ){
 
 
@@ -292,12 +456,12 @@ bool compare_buffers( const HView1D& buf_gold, const HView1D& buf_comp, const HV
   for( int l = 0; l < nvar ; l++){
     for( int buf_idx =0; buf_idx < N_BUFFERS; buf_idx++){
       //Get the start indices and length of this buffer
-      const int buf_is  = buf_boxes(buf_idx, 0);
-      const int buf_nx1 = buf_boxes(buf_idx, 1);
-      const int buf_js  = buf_boxes(buf_idx, 2);
-      const int buf_nx2 = buf_boxes(buf_idx, 3);
-      const int buf_ks  = buf_boxes(buf_idx, 4);
-      const int buf_nx3 = buf_boxes(buf_idx, 5);
+      const int buf_is  = packing_buf_boxes(buf_idx, 0);
+      const int buf_nx1 = packing_buf_boxes(buf_idx, 1);
+      const int buf_js  = packing_buf_boxes(buf_idx, 2);
+      const int buf_nx2 = packing_buf_boxes(buf_idx, 3);
+      const int buf_ks  = packing_buf_boxes(buf_idx, 4);
+      const int buf_nx3 = packing_buf_boxes(buf_idx, 5);
 
       for( int buf_k = 0; buf_k < buf_nx3; buf_k++){
         for( int buf_j = 0; buf_j < buf_nx2; buf_j++){
@@ -340,10 +504,46 @@ bool compare_buffers( const HView1D& buf_gold, const HView1D& buf_comp, const HV
   return all_matching;
 }
 
+bool compare_meshblocks( const HView4D& in_gold, const HView4D& in_comp,
+    const int& nvar, const int& nx1, const int& nx2, const int& nx3
+    ){
 
-template<typename Functor>
-bool check_against_cpp( Functor functor,
-    const View4D& in, const View1D& buf,
+
+  bool all_matching = true;
+  for( int l = 0; l < nvar ; l++){
+    for( int k = 0; k < nx3 ; k++){
+      for( int j = 0; j < nx2 ; j++){
+        for( int i = 0; i < nx1 ; i++){
+          bool matches = (in_gold( l, k, j, i ) 
+                       == in_comp( l, k, j, i ));
+
+          if( !matches ){
+            std::cout<< "Fault in meshblock "
+                     << " at gold (" << l << "," << k << "," << j << "," << i <<" ) = "
+                     << in_gold( l, k, j, i)
+                     << " at mb   (" << l << "," << k << "," << j << "," << i <<" ) = "
+                     << in_comp( l, k, j, i)
+                     << std::endl;
+          }
+
+          assert(matches);
+
+          all_matching &= matches;
+        }
+      }
+    }
+  }//End variables
+
+  assert(all_matching);
+  return all_matching;
+}
+
+
+template<typename PackingFunctor, typename UnpackingFunctor>
+bool check_against_cpp( 
+    PackingFunctor packing_functor,
+    UnpackingFunctor unpacking_functor,
+    const View4D& in, const View1D& buf, const View4D& out,
     const int& nvar,
     const int& nx1, const int& nx2, const int& nx3, const int& nghost,
     const int& int_nx1, const int& int_nx2, const int& int_nx3,
@@ -351,8 +551,8 @@ bool check_against_cpp( Functor functor,
     const int& var_buf_n, const int& total_buf
     ){
 
-  //Create host copy of in
-  HView4D h_in = Kokkos::create_mirror_view(in);
+  //Create host copy of in for testing on CPU
+  HView4D h_in = Kokkos::create_mirror(in);
   Kokkos::deep_copy(h_in,in);
 
   //Create host buffer
@@ -365,8 +565,8 @@ bool check_against_cpp( Functor functor,
       int_nx1, int_nx2, int_nx3,
       var_face_buf_n, var_edge_buf_n, var_vert_buf_n,
       var_buf_n);
-  HIntView2D h_buf_boxes("h_buf_boxes",N_BUFFERS,6);
-  compute_buf_boxes( h_buf_boxes,
+  HIntView2D h_packing_buf_boxes("h_packing_buf_boxes",N_BUFFERS,6);
+  compute_packing_buf_boxes( h_packing_buf_boxes,
       nx1, nx2, nx3, nghost,
       int_nx1, int_nx2, int_nx3,
       var_buf_n);
@@ -374,11 +574,11 @@ bool check_against_cpp( Functor functor,
   //Do buffer packing on host
   cpp_buffer_packing( h_in, h_buf,
       nvar, var_buf_n,
-      h_buf_offsets, h_buf_boxes);
+      h_buf_offsets, h_packing_buf_boxes);
 
   //Do buffer packing on device
   Kokkos::fence();
-  functor();
+  packing_functor();
   Kokkos::fence();
 
   //Create host copy of buf
@@ -388,14 +588,45 @@ bool check_against_cpp( Functor functor,
   //Compare two buffers
   compare_buffers( h_buf, h_buf_copy, h_in,
       nvar, var_buf_n,
-      h_buf_offsets, h_buf_boxes);
+      h_buf_offsets, h_packing_buf_boxes);
+
+  //Reuse in for unpacking
+  const HView4D& h_out = h_in;
+
+  //Corrupt the ghostzones
+  cpp_corrupt_ghostzones(h_out, nvar, nx1, nx2, nx3, nghost);
+  //TODO Corrupt GPU ghostzones
+
+  //Compute unpacking boxes for CPUs
+  HIntView2D h_unpacking_buf_boxes("h_unpacking_buf_boxes",N_BUFFERS,6);
+  compute_unpacking_buf_boxes( h_unpacking_buf_boxes,
+      nx1, nx2, nx3, nghost,
+      int_nx1, int_nx2, int_nx3,
+      var_buf_n);
+  
+  //do buffer unpacking on host
+  cpp_buffer_unpacking( h_out, h_buf,
+      nvar, var_buf_n,
+      h_buf_offsets, h_unpacking_buf_boxes);
+
+  //Do buffer unpacking on the device
+  Kokkos::fence();
+  unpacking_functor();
+  Kokkos::fence();
+
+  //Copy the GPU array to host, for comparisons
+  HView4D h_out_comp = Kokkos::create_mirror_view(out);
+  Kokkos::deep_copy(h_out_comp,out);
+
+  compare_meshblocks( h_out, h_out_comp,
+      nvar, nx1, nx2, nx3);
 
   return true;
 }
 
 
 //Save "data" at "l,k,j,i" to "buf" in the "face_dim,face_side" face buffer
-KOKKOS_INLINE_FUNCTION void save_to_face_buf( const View4D& in, const View1D& buf,
+KOKKOS_INLINE_FUNCTION void save_to_face_buf(const View1D& buf,
     const Real& data,
     const int& l, const int& k, const int& j, const int& i,
     const int& face_dim, const bool& face_side,
@@ -432,7 +663,7 @@ KOKKOS_INLINE_FUNCTION void save_to_face_buf( const View4D& in, const View1D& bu
 }
 
 //Save "data" at "l,k,j,i" to "buf" in the "edge_dim,edge1_side,edge2_side" edge buffer
-KOKKOS_INLINE_FUNCTION void save_to_edge_buf( const View4D& in, const View1D& buf,
+KOKKOS_INLINE_FUNCTION void save_to_edge_buf(const View1D& buf,
     const Real& data,
     const int& l, const int& k, const int& j, const int& i,
     const int& edge_dim, const int& edge1_dim, const bool& edge1_side, const int& edge2_dim, const bool& edge2_side,
@@ -472,7 +703,7 @@ KOKKOS_INLINE_FUNCTION void save_to_edge_buf( const View4D& in, const View1D& bu
 }
 
 //Save "data" at "l,k,j,i" to "buf" in the "side1, side2, side3" vert buffer
-KOKKOS_INLINE_FUNCTION void save_to_vert_buf( const View4D& in, const View1D& buf,
+KOKKOS_INLINE_FUNCTION void save_to_vert_buf(const View1D& buf,
     const Real& data,
     const int& l, const int& k, const int& j, const int& i,
     const bool& side1, const bool& side2, const bool& side3,
@@ -508,6 +739,118 @@ KOKKOS_INLINE_FUNCTION void save_to_vert_buf( const View4D& in, const View1D& bu
   const int buf_idx = buf_offset + vert_buf_idx;
   //Save data to buf
   buf( buf_idx ) = data;
+}
+
+//Save "data" at "l,k,j,i" to "buf" in the "face_dim,face_side" face buffer
+KOKKOS_INLINE_FUNCTION void load_from_face_buf( const View4D& out, const View1D& buf,
+    const int& l, const int& k, const int& j, const int& i,
+    const int& face_dim, const bool& face_side,
+    const int& nvar, const int& nx1, const int& nx2, const int& nx3, const int& nghost,
+    const int& int_nx1, const int& int_nx2, const int& int_nx3
+    ){
+  //Start indices of face buffer
+  const int face_is = face_dim == 0 ?  (face_side ? nx1-nghost : 0) : nghost;
+  const int face_js = face_dim == 1 ?  (face_side ? nx2-nghost : 0) : nghost;
+  const int face_ks = face_dim == 2 ?  (face_side ? nx3-nghost : 0) : nghost;
+
+  //Dimensions of the face
+  const int face_nx1 = (face_dim == 0) ? nghost : int_nx1;
+  const int face_nx2 = (face_dim == 1) ? nghost : int_nx2;
+  const int face_nx3 = (face_dim == 2) ? nghost : int_nx3;
+
+  //Index of k,j,i within the face
+  const int face_i = i - face_is;
+  const int face_j = j - face_js;
+  const int face_k = k - face_ks;
+
+  //Index within face buffer
+  const int face_buf_idx  =  face_i + face_nx1*( face_j + face_nx2*face_k);
+
+  //Offset in buf
+  const int buf_offset = nvar*(  2*nghost*( (face_dim > 0)*int_nx2*int_nx3 + (face_dim > 1)*int_nx1*int_nx3) //Offest from previous faces
+                               + face_side*face_nx1*face_nx2*face_nx3) //Add M face offset, if applicable
+                       + face_nx1*face_nx2*face_nx3*l; //Offset from previous variables
+
+  const int buf_idx = buf_offset + face_buf_idx;
+  //Load data from buf
+  out(l,k,j,i) = buf( buf_idx );
+}
+
+//Save "data" at "l,k,j,i" to "buf" in the "edge_dim,edge1_side,edge2_side" edge buffer
+KOKKOS_INLINE_FUNCTION void load_from_edge_buf( const View4D& out, const View1D& buf,
+    const int& l, const int& k, const int& j, const int& i,
+    const int& edge_dim, const int& edge1_dim, const bool& edge1_side, const int& edge2_dim, const bool& edge2_side,
+    const int& nvar,
+    const int& nx1, const int& nx2, const int& nx3, const int& nghost,
+    const int& int_nx1, const int& int_nx2, const int& int_nx3,
+    const int& total_face_buf_n
+    ){
+  //Start indices of edge
+  const int edge_is = edge_dim == 0 ?  nghost : ( ( (edge1_dim == 0 && edge1_side) || (edge2_dim == 0 && edge2_side) )? nx1-nghost : 0); 
+  const int edge_js = edge_dim == 1 ?  nghost : ( ( (edge1_dim == 1 && edge1_side) || (edge2_dim == 1 && edge2_side) )? nx2-nghost : 0); 
+  const int edge_ks = edge_dim == 2 ?  nghost : ( ( (edge1_dim == 2 && edge1_side) || (edge2_dim == 2 && edge2_side) )? nx3-nghost : 0); 
+
+  //Dimensions of the edge
+  const int edge_nx1 = (edge_dim == 0) ? int_nx1 : nghost;
+  const int edge_nx2 = (edge_dim == 1) ? int_nx2 : nghost;
+  const int edge_nx3 = (edge_dim == 2) ? int_nx3 : nghost;
+
+  //Index of k,j,i within the edge
+  const int edge_i = i - edge_is;
+  const int edge_j = j - edge_js;
+  const int edge_k = k - edge_ks;
+
+  //Index within edge buffer
+  const int edge_buf_idx  =  edge_i + edge_nx1*( edge_j + edge_nx2*edge_k);
+
+
+  //Offset in buf
+  const int buf_offset = + total_face_buf_n //Add offset from faces
+                         + nvar*(4*nghost*nghost*( (edge_dim > 0)*int_nx1 + (edge_dim > 1)*int_nx2) //Offest from previous edges in other dims
+                              + (2*edge1_side + edge2_side)*edge_nx1*edge_nx2*edge_nx3) //Add offset from previous edge in this dim
+                         + edge_nx1*edge_nx2*edge_nx3*l; //Offset from previous variables
+
+  const int buf_idx = buf_offset + edge_buf_idx;
+  //Load data from buf
+  out(l,k,j,i) = buf( buf_idx );
+}
+
+//Save "data" at "l,k,j,i" to "buf" in the "side1, side2, side3" vert buffer
+KOKKOS_INLINE_FUNCTION void load_from_vert_buf( const View4D& out, const View1D& buf,
+    const int& l, const int& k, const int& j, const int& i,
+    const bool& side1, const bool& side2, const bool& side3,
+    const int& nvar,
+    const int& nx1, const int& nx2, const int& nx3, const int& nghost,
+    const int& int_nx1, const int& int_nx2, const int& int_nx3,
+    const int& total_face_buf_n, const int& total_edge_buf_n
+    ){
+  //Start indices of vert
+  const int vert_is = side1 ? nx1-nghost : 0;
+  const int vert_js = side2 ? nx2-nghost : 0;
+  const int vert_ks = side3 ? nx3-nghost : 0;
+
+  //Dimensions of the vert
+  const int vert_nx1 = nghost;
+  const int vert_nx2 = nghost;
+  const int vert_nx3 = nghost;
+
+  //Index of k,j,i within the vert
+  const int vert_i = i - vert_is;
+  const int vert_j = j - vert_js;
+  const int vert_k = k - vert_ks;
+
+  //Index within vert buffer
+  const int vert_buf_idx  =  vert_i + vert_nx1*( vert_j + vert_nx2*vert_k);
+
+  //Offset in buf
+  const int buf_offset = total_face_buf_n //Add offset from faces
+                       + total_edge_buf_n //Add offset from edges
+                       + nvar*nghost*nghost*nghost*( 4*side1 + 2*side2 + side3 )
+                       + vert_nx1*vert_nx2*vert_nx3*l; //Offset from previous variables
+
+  const int buf_idx = buf_offset + vert_buf_idx;
+  //Load data from buf
+  out(l,k,j,i) = buf( buf_idx );
 }
 
 int main(int argc, char* argv[]) {
@@ -566,22 +909,22 @@ int main(int argc, char* argv[]) {
     //Simple loop
 
     //Number of points that are only in one of the x faces
-    const int x_slab_points = nghost * (int_nx2 - 2*nghost) * (int_nx3 - 2*nghost);
+    const int x_packing_slab_points = nghost * (int_nx2 - 2*nghost) * (int_nx3 - 2*nghost);
     //Number of points that are in one of the y faces but not z faces
-    const int y_slab_points = nghost * int_nx1 * (int_nx3 - 2*nghost);
+    const int y_packing_slab_points = nghost * int_nx1 * (int_nx3 - 2*nghost);
     //Number of points that are in one the z faces
-    const int z_slab_points = nghost * int_nx1 * int_nx2;
+    const int z_packing_slab_points = nghost * int_nx1 * int_nx2;
 
-    //auto simple_kernel = [&] () {
-    //  Kokkos::parallel_for( "Simple Loop", Kokkos::MDRangePolicy<Kokkos::Rank<2>>({0,0},{nvar, 2*(x_slab_points+y_slab_points+z_slab_points)}),
+    //auto simple_packing_kernel = [&] () {
+    //  Kokkos::parallel_for( "Simple Loop", Kokkos::MDRangePolicy<Kokkos::Rank<2>>({0,0},{nvar, 2*(x_packing_slab_points+y_packing_slab_points+z_packing_slab_points)}),
     //    KOKKOS_LAMBDA (const int& l, const int& idx){
 
-    const unsigned int var_all_slabs_n = 2*(x_slab_points+y_slab_points+z_slab_points);
-    auto simple_kernel = [&] () {
-      Kokkos::parallel_for( "Simple Loop", Kokkos::RangePolicy<>({0,nvar*var_all_slabs_n}),
+    const unsigned int var_all_packing_slabs_n = 2*(x_packing_slab_points+y_packing_slab_points+z_packing_slab_points);
+    auto simple_packing_kernel = [&] () {
+      Kokkos::parallel_for( "Packing Kernel", Kokkos::RangePolicy<>({0,nvar*var_all_packing_slabs_n}),
         KOKKOS_LAMBDA (const int global_idx){
-          const int l = global_idx/var_all_slabs_n;
-          const int idx = global_idx%var_all_slabs_n;
+          const int l = global_idx/var_all_packing_slabs_n;
+          const int idx = global_idx%var_all_packing_slabs_n;
 
           //Indices into the mesh block
           int i,j,k;
@@ -589,10 +932,10 @@ int main(int argc, char* argv[]) {
           //Load data from in
           Real data;
           //Determine which group of points idx belongs to
-          if( idx < 2*x_slab_points){
+          if( idx < 2*x_packing_slab_points){
             //idx is in a x slab (no edges)
-            const int slab_idx = idx%x_slab_points;//idx inside the slab
-            const int slab_side = idx >= x_slab_points;//Which side to work on
+            const int slab_idx = idx%x_packing_slab_points;//idx inside the slab
+            const int slab_side = idx >= x_packing_slab_points;//Which side to work on
 
             //Start and dimensions of slab
             const int slab_is = slab_side ? nghost : int_nx1;//Is this XM or XP?
@@ -611,10 +954,10 @@ int main(int argc, char* argv[]) {
             
             //Load the data point
             data = in(l,k,j,i);
-          } else if ( idx < 2*( x_slab_points + y_slab_points) ){
+          } else if ( idx < 2*( x_packing_slab_points + y_packing_slab_points) ){
             //idx is in a y slab (no z edges)
-            const int slab_idx = (idx-2*x_slab_points) %y_slab_points;//idx inside the slab
-            const int slab_side = (idx-2*x_slab_points) >= y_slab_points;//Which side to work on
+            const int slab_idx = (idx-2*x_packing_slab_points) %y_packing_slab_points;//idx inside the slab
+            const int slab_side = (idx-2*x_packing_slab_points) >= y_packing_slab_points;//Which side to work on
 
             //Start and dimensions of slab
             const int slab_is = nghost;
@@ -635,8 +978,8 @@ int main(int argc, char* argv[]) {
             data = in(l,k,j,i);
           } else {
             //idx is in a z slab (all edges)
-            const int slab_idx = (idx-2*(x_slab_points+y_slab_points)) %z_slab_points;//idx inside the slab
-            const int slab_side = (idx-2*(x_slab_points+y_slab_points)) >= z_slab_points;//Which side to work on
+            const int slab_idx = (idx-2*(x_packing_slab_points+y_packing_slab_points)) %z_packing_slab_points;//idx inside the slab
+            const int slab_side = (idx-2*(x_packing_slab_points+y_packing_slab_points)) >= z_packing_slab_points;//Which side to work on
 
             //Start and dimensions of slab
             const int slab_is = nghost;
@@ -669,7 +1012,7 @@ int main(int argc, char* argv[]) {
               //Determine which face side
               const bool face_side = (idx_array[dim] >= int_nx_array[dim]);
               //Save to the face buffer
-              save_to_face_buf( in, buf,
+              save_to_face_buf( buf,
                   data,
                   l, k, j, i,
                   dim,face_side,
@@ -701,7 +1044,7 @@ int main(int argc, char* argv[]) {
               const bool edge1_side =  edge1_idx >= edge1_int_nx;
               const bool edge2_side =  edge2_idx >= edge2_int_nx;
               //Save to the edge buffer
-              save_to_edge_buf( in, buf,
+              save_to_edge_buf( buf,
                   data,
                   l, k, j, i,
                   dim, edge1_dim, edge1_side, edge2_dim, edge2_side,
@@ -723,7 +1066,7 @@ int main(int argc, char* argv[]) {
             const bool side2 = j >= int_nx2;
             const bool side3 = k >= int_nx3;
             //Save to the edge buffer
-            save_to_vert_buf( in, buf,
+            save_to_vert_buf( buf,
                 data,
                 l, k, j, i,
                 side1, side2, side3,
@@ -735,15 +1078,152 @@ int main(int argc, char* argv[]) {
       });  //End lambda, parallel_for
     }; //End lambda
 
-    check_against_cpp(simple_kernel,
-        in, buf,
+    //Make out just the same array as in
+    const View4D& out = in;
+
+    //Number of points that are only in one of the x faces
+    const int x_unpacking_slab_points = nghost * (nx2 - 2*nghost) * (nx3 - 2*nghost);
+    //Number of points that are in one of the y faces but not z faces
+    const int y_unpacking_slab_points = nghost * nx1 * (nx3 - 2*nghost);
+    //Number of points that are in one the z faces
+    const int z_unpacking_slab_points = nghost * nx1 * nx2;
+
+    //auto simple_packing_kernel = [&] () {
+    //  Kokkos::parallel_for( "Simple Loop", Kokkos::MDRangePolicy<Kokkos::Rank<2>>({0,0},{nvar, 2*(x_unpacking_slab_points+y_unpacking_slab_points+z_unpacking_slab_points)}),
+    //    KOKKOS_LAMBDA (const int& l, const int& idx){
+
+    const unsigned int var_all_unpacking_slabs_n = 2*(x_unpacking_slab_points+y_unpacking_slab_points+z_unpacking_slab_points);
+    auto simple_unpacking_kernel = [&] () {
+      Kokkos::parallel_for( "Packing Kernel", Kokkos::RangePolicy<>({0,nvar*var_all_unpacking_slabs_n}),
+        KOKKOS_LAMBDA (const int global_idx){
+          const int l = global_idx/var_all_unpacking_slabs_n;
+          const int idx = global_idx%var_all_unpacking_slabs_n;
+
+          //Indices into the mesh block
+          int i,j,k;
+
+          //Determine which group of points idx belongs to
+          if( idx < 2*x_unpacking_slab_points){
+            //idx is in a x slab (no edges)
+            const int slab_idx = idx%x_unpacking_slab_points;//idx inside the slab
+            const int slab_side = idx >= x_unpacking_slab_points;//Which side to work on
+
+            //Start and dimensions of slab
+            const int slab_is = slab_side ? 0 : nx1 - nghost;//Is this XM or XP?
+            const int slab_nx1 = nghost;
+            const int slab_js = nghost; //Exclude the edges, take care of by other slabs
+            const int slab_nx2 = int_nx2;
+            const int slab_ks = nghost;
+            //const int slab_nx3 = int_nx3 - nghost*2;
+            
+            //Find the index within the grid
+            k =  slab_idx/( slab_nx1*slab_nx2 ) + slab_ks;
+            j = (slab_idx%( slab_nx1*slab_nx2 ))/slab_nx1 + slab_js;
+            i =  slab_idx%slab_nx1 + slab_is;
+
+            assert( i - slab_is + slab_nx1*( j - slab_js + slab_nx2 * (k - slab_ks)) == slab_idx );
+            assert( i < nx1 );
+
+          } else if ( idx < 2*( x_unpacking_slab_points + y_unpacking_slab_points) ){
+            //idx is in a y slab (no z edges)
+            const int slab_idx = (idx-2*x_unpacking_slab_points) %y_unpacking_slab_points;//idx inside the slab
+            const int slab_side = (idx-2*x_unpacking_slab_points) >= y_unpacking_slab_points;//Which side to work on
+
+            //Start and dimensions of slab
+            const int slab_is = 0;
+            const int slab_nx1 = nx1;
+            const int slab_js = slab_side ? 0 : nx2 - nghost; //Is this YM or YP?
+            const int slab_nx2 = nghost;
+            const int slab_ks = nghost; ///Exclude the edges
+            //const int slab_nx3 = int_nx3;
+            
+            //Find the index within the grid
+            k =  slab_idx/( slab_nx1*slab_nx2 ) + slab_ks;
+            j = (slab_idx%( slab_nx1*slab_nx2 ))/slab_nx1 + slab_js;
+            i =  slab_idx%slab_nx1 + slab_is;
+            
+            assert( i - slab_is + slab_nx1*( j - slab_js + slab_nx2 * (k - slab_ks)) == slab_idx );
+            assert( i < nx1 );
+
+          } else {
+            //idx is in a z slab (all edges)
+            const int slab_idx = (idx-2*(x_unpacking_slab_points+y_unpacking_slab_points)) %z_unpacking_slab_points;//idx inside the slab
+            const int slab_side = (idx-2*(x_unpacking_slab_points+y_unpacking_slab_points)) >= z_unpacking_slab_points;//Which side to work on
+
+            //Start and dimensions of slab
+            const int slab_is = 0;
+            const int slab_nx1 = nx1;
+            const int slab_js = 0;
+            const int slab_nx2 = nx2;
+            const int slab_ks = slab_side ? 0 : nx3-nghost; //Is this ZM or ZP?
+            //const int slab_nx3 = nghost;
+            
+            //Find the index within the grid
+            k =  slab_idx/( slab_nx1*slab_nx2 ) + slab_ks;
+            j = (slab_idx%( slab_nx1*slab_nx2 ))/slab_nx1 + slab_js;
+            i =  slab_idx%slab_nx1 + slab_is;
+
+            assert( i - slab_is + slab_nx1*( j - slab_js + slab_nx2 * (k - slab_ks)) == slab_idx );
+            assert( i < nx1 );
+          }
+
+          //Determine which faces (k,j,i) is on
+          const bool is_x_face = (i < nghost || i >= nx1 - nghost );
+          const bool is_y_face = (j < nghost || j >= nx2 - nghost );
+          const bool is_z_face = (k < nghost || k >= nx3 - nghost );
+          //Determine which side of the faces (k,j,i) is on (doesn't matter if it's not on that face
+          const bool x_face_sign = i > nghost;
+          const bool y_face_sign = j > nghost;
+          const bool z_face_sign = k > nghost;
+          //Helper array
+          const bool face_signs[] = {x_face_sign, y_face_sign, z_face_sign};
+
+          const int face_sum = is_x_face + is_y_face + is_z_face;
+          if( face_sum == 1 ){
+            //This is just a face
+            load_from_face_buf( out, buf,
+                l, k, j, i,
+                is_y_face + 2*is_z_face,// 0,1,2 for x,y,z face
+                (is_x_face ? x_face_sign : 0 ) + (is_y_face ? y_face_sign : 0 ) + (is_z_face ? z_face_sign : 0 ),  //Face sign 
+                nvar, nx1, nx2, nx3, nghost,
+                int_nx1, int_nx2, int_nx3);
+          } else if ( face_sum == 2){
+            //This is an edge
+            const int edge_dim = (is_x_face && is_z_face) + 2*(is_x_face && is_y_face);
+            const int edge1_dim = (edge_dim+1)%3;
+            const int edge2_dim = (edge_dim+2)%3;
+            const bool edge1_sign = face_signs[edge1_dim];
+            const bool edge2_sign = face_signs[edge2_dim];
+            load_from_edge_buf( out, buf,
+                l, k, j, i,
+                edge_dim, edge1_dim, edge1_sign, edge2_dim, edge2_sign,
+                nvar, nx1, nx2, nx3, nghost,
+                int_nx1, int_nx2, int_nx3,
+                total_face_buf_n);
+          } else if ( face_sum == 3){
+            //This is a vertex
+            load_from_vert_buf( out, buf,
+                l, k, j, i,
+                x_face_sign, y_face_sign, z_face_sign,
+                nvar, nx1, nx2, nx3, nghost,
+                int_nx1, int_nx2, int_nx3,
+                total_face_buf_n, total_edge_buf_n);
+          } else{ 
+            //ERROR! This isn't a face, edge, or vertex. How did we get here?
+            assert(false);
+          }
+      });  //End lambda, parallel_for
+    }; //End lambda
+
+    check_against_cpp(simple_packing_kernel, simple_unpacking_kernel,
+        in, buf, out,
         nvar,
         nx1, nx2, nx3, nghost,
         int_nx1, int_nx2, int_nx3,
         var_face_buf_n, var_edge_buf_n, var_vert_buf_n,
         var_buf_n, total_buf);
 
-    double time_simple = kernel_timer_wrapper( nrun, nrun, simple_kernel);
+    double time_simple = kernel_timer_wrapper( nrun, nrun, simple_packing_kernel);
 
     double cell_cycles_per_second_simple = static_cast<double>(nmb)*static_cast<double>(nrun)/time_simple; 
     double time_per_kernel_simple = time_simple/static_cast<double>(nrun); 
