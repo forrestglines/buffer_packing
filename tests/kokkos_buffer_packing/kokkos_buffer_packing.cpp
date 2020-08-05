@@ -1223,13 +1223,19 @@ int main(int argc, char* argv[]) {
         var_face_buf_n, var_edge_buf_n, var_vert_buf_n,
         var_buf_n, total_buf);
 
-    double time_simple = kernel_timer_wrapper( nrun, nrun, simple_packing_kernel);
+    double time_packing = kernel_timer_wrapper( nrun, nrun, simple_packing_kernel);
+    double time_unpacking = kernel_timer_wrapper( nrun, nrun, simple_unpacking_kernel);
 
-    double cell_cycles_per_second_simple = static_cast<double>(nmb)*static_cast<double>(nrun)/time_simple; 
-    double time_per_kernel_simple = time_simple/static_cast<double>(nrun); 
+    double cell_cycles_per_second_packing = static_cast<double>(nmb)*static_cast<double>(nrun)/time_packing; 
+    double time_per_kernel_packing = time_packing/static_cast<double>(nrun); 
+
+    double cell_cycles_per_second_unpacking = static_cast<double>(nmb)*static_cast<double>(nrun)/time_unpacking; 
+    double time_per_kernel_unpacking = time_unpacking/static_cast<double>(nrun); 
+
     std::cout<< nvar << " " << nx1 << " " << nx2 << " " << nx3 << " " << " " << nmb << " " << nrun << " " 
-             << time_simple << " " << time_per_kernel_simple << " " << cell_cycles_per_second_simple << " " << 
-             std::endl;
+             << time_packing << " " << time_per_kernel_packing << " " << cell_cycles_per_second_packing << " "
+             << time_unpacking << " " << time_per_kernel_unpacking << " " << cell_cycles_per_second_unpacking << " "
+             << std::endl;
   }
   Kokkos::finalize();
 }
